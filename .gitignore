@@ -1,0 +1,16 @@
+node_modules
+dist
+dist-single
+# Original KitBash3D source files and derived runtime assets: never commit or publish
+assets-private/
+public/assets/utopia/
+test-results/
+dist-challenge
+dist-morph
+public/test-tiles/
+dist-frankfurt
+dist-sydney
+dist-hongkong
+dist-neocity
+.env.local
+_site/

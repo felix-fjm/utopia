@@ -1,0 +1,17 @@
+import { chromium } from 'playwright-core';
+const url = process.argv[2] || 'http://localhost:4173/';
+const out = process.argv[3] || '/tmp/shot.png';
+const browser = await chromium.launch({ executablePath: '/usr/bin/google-chrome', args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+const logs = [];
+page.on('console', (m) => logs.push(m.type() + ': ' + m.text()));
+page.on('pageerror', (e) => logs.push('PAGEERROR: ' + e.message));
+await page.goto(url);
+await page.waitForFunction(() => document.getElementById('loading')?.classList.contains('done'), null, { timeout: 120000 }).catch(e => logs.push('TIMEOUT loading'));
+if (process.argv[5]) await page.evaluate(process.argv[5]);
+await page.waitForTimeout(Number(process.argv[4] || 4000));
+await page.screenshot({ path: out });
+const info = await page.evaluate(() => { const u = window.__utopia; return u ? { stats: u.city.stats, calls: u.renderer.info.render.calls, tris: u.renderer.info.render.triangles, fps: u.perf.fps, pr: u.pixelRatio, pos: u.camera.position.toArray() } : null; });
+console.log(JSON.stringify(info));
+console.log(logs.slice(0, 30).join('\n'));
+await browser.close();

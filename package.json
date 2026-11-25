@@ -1,0 +1,45 @@
+{
+  "name": "utopia-flythrough",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "tsc --noEmit && vite build",
+    "build:single": "vite build --mode single",
+    "preview": "vite preview --host",
+    "assets:optimize": "node tools/optimize-assets.mjs",
+    "assets:testkit": "node tools/make-test-kit.mjs",
+    "test:e2e": "node tests/e2e.mjs",
+    "build:challenge": "VITE_GAME=challenge vite build --mode single --outDir dist-challenge",
+    "dev:challenge": "VITE_GAME=challenge vite --host",
+    "build:morph": "VITE_GAME=morph vite build --mode single --outDir dist-morph",
+    "dev:morph": "VITE_GAME=morph vite --host",
+    "dev:frankfurt": "VITE_CITY=frankfurt vite --host",
+    "build:frankfurt": "VITE_CITY=frankfurt vite build --outDir dist-frankfurt",
+    "dev:sydney": "VITE_CITY=sydney vite --host",
+    "build:sydney": "VITE_CITY=sydney vite build --outDir dist-sydney",
+    "dev:hongkong": "VITE_CITY=hongkong vite --host",
+    "build:hongkong": "VITE_CITY=hongkong vite build --outDir dist-hongkong",
+    "dev:neocity": "VITE_GAME=morph vite --host",
+    "build:neocity": "VITE_GAME=morph vite build --outDir dist-neocity",
+    "test:real": "node tools/make-test-tiles.mjs && node tests/real.mjs"
+  },
+  "dependencies": {
+    "3d-tiles-renderer": "^0.5.4",
+    "three": "^0.187.0",
+    "three-mesh-bvh": "^0.10.0"
+  },
+  "devDependencies": {
+    "@gltf-transform/core": "^4.5.1",
+    "@gltf-transform/extensions": "^4.5.1",
+    "@gltf-transform/functions": "^4.5.1",
+    "@types/three": "^0.187.0",
+    "meshoptimizer": "^1.3.0",
+    "playwright-core": "^1.65.1",
+    "sharp": "^0.34.0",
+    "typescript": "^5.9.0",
+    "vite": "^8.3.0",
+    "vite-plugin-singlefile": "^2.3.0"
+  }
+}
