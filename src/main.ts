@@ -135,6 +135,8 @@ function realWorld(): MorphWorld {
     surfaceAt: (x, z, maxY) => (tw ? tw.surfaceAt(x, z, maxY) : 0),
     cell: (cx, cz) => (osm ? osm.cell(cx, cz) : osmFailed ? fallbackCell(cx, cz) : null),
     groundY: (x, z) => (tw && tw.ready ? tw.groundAt(x, z, 1500) : null),
+    carCollide: (x, gy, z, m) => (tw && tw.ready ? tw.wallCollide(x, gy, z, m) : [x, z, false]),
+    carGround: (x, z, y) => (tw && tw.ready ? tw.roadAt(x, z, y) : y),
   };
 }
 
@@ -246,7 +248,7 @@ function applyQuality(q: QualityName) {
   ground.setSize(Q.viewRadius * 4.4);
   traffic.setCapacity(Q.vehicles);
   camera.far = REAL ? 30000 : Q.viewRadius * 2.8;
-  if (REAL) { env.setShadows(false, 1024); tw?.setErrorTarget({ performance: 20, balanced: 12, high: 8, ultra: 4 }[q]); }
+  if (REAL) { env.setShadows(false, 1024); tw?.setErrorTarget({ performance: 32, balanced: 20, high: 12, ultra: 7 }[q]); }
   camera.updateProjectionMatrix();
   pixelRatio = Math.min(window.devicePixelRatio, Q.maxPixelRatio);
   renderer.setPixelRatio(pixelRatio);
@@ -350,6 +352,7 @@ function frame(now: number) {
       (morph ? `\nObjekte    ${morph.stats.cars} Autos / ${morph.stats.frogs} Frösche / ${morph.stats.orbs} Kugeln` : '') +
       (osm ? `\nOSM        ${osm.roadsKm.toFixed(0)} km Straßen, ${osm.parks} Parks` : '') +
       (signs ? `\nNeon       ${signs.count} Schilder` : '') +
+      (tw ? `\nKachel-RAM ${Math.round(tw.memoryUse() * 100)} %` : '') +
       (tw ? '\nKacheln    ' + tw.layerStatus().map((l) => `${l.label}${l.ready ? '✓' : l.error ? '✗' : '…'}${l.fallback ? '(alt)' : ''}`).join(' ') : '');
   }
   requestAnimationFrame(frame);
@@ -446,8 +449,8 @@ async function bootReal() {
   // city switcher in the settings
   const row = document.createElement('div');
   row.className = 'seg';
-  row.style.cssText = 'grid-template-columns:repeat(2,1fr);margin-top:8px';
-  row.innerHTML = (['tokyo', 'frankfurt', 'sydney', 'hongkong'] as const).map((c) => `<button data-c="${c}" class="${c === city0.id ? 'on' : ''}">${{ tokyo: 'Neo Tokio', frankfurt: 'Frankfurt', sydney: 'Sydney', hongkong: 'Hongkong' }[c]}</button>`).join('');
+  row.style.cssText = 'grid-template-columns:repeat(3,1fr);margin-top:8px';
+  row.innerHTML = (['frankfurt', 'sydney', 'hongkong'] as const).map((c) => `<button data-c="${c}" class="${c === city0.id ? 'on' : ''}">${{ tokyo: 'Neo Tokio', frankfurt: 'Frankfurt', sydney: 'Sydney', hongkong: 'Hongkong' }[c]}</button>`).join('');
   document.getElementById('b-reset')!.parentElement!.after(row);
   row.querySelectorAll<HTMLElement>('button').forEach((b) => b.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); const u = new URL(location.href); u.searchParams.set('city', b.dataset.c!); location.href = u.toString(); }));
   const keyBtn = document.createElement('button');

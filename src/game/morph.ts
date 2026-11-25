@@ -17,6 +17,10 @@ export interface MorphWorld {
   cell(cx: number, cz: number): CellContent | null;
   /** ground height for an entity, null while unknown (e.g. tiles not loaded yet) */
   groundY(x: number, z: number): number | null;
+  /** optional car-specific collision (only real walls block) */
+  carCollide?(wx: number, groundY: number, wz: number, margin: number): [number, number, boolean];
+  /** optional car road height that ignores small clutter above the wheels */
+  carGround?(wx: number, wz: number, y: number): number | null;
 }
 
 export interface MorphConfig {
@@ -356,10 +360,15 @@ export class Morph {
         for (let s = 0; s < steps; s++) {
           c.x += -Math.sin(c.h) * c.v * dt / steps;
           c.z += -Math.cos(c.h) * c.v * dt / steps;
-          const r = this.collide(c.x, c.y + 1, c.z, ox, oz, CAR_R);
-          if (r[3]) { c.x = r[0]; c.z = r[2]; hit = true; }
-          // follow the road surface (ramps, hills); never climb onto walls
-          const gy = this.surfaceAt(c.x, c.z, c.y + 1.4);
+          if (this.world.carCollide) {
+            const r = this.world.carCollide(c.x, c.y, c.z, CAR_R);
+            if (r[2]) { c.x = r[0]; c.z = r[1]; hit = true; }
+          } else {
+            const r = this.collide(c.x, c.y + 1, c.z, ox, oz, CAR_R);
+            if (r[3]) { c.x = r[0]; c.z = r[2]; hit = true; }
+          }
+          // follow the road surface (ramps, hills); never climb onto walls or clutter
+          const gy = this.world.carGround ? (this.world.carGround(c.x, c.z, c.y) ?? c.y) : this.surfaceAt(c.x, c.z, c.y + 1.4);
           c.y += (gy - c.y) * (gy > c.y ? 1 : Math.min(1, 6 * dt / steps));
         }
         if (hit && Math.abs(c.v) > 6) { c.v *= -0.25; c.crash = 0.5; this.audio.crash(); }

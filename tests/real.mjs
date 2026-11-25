@@ -106,6 +106,28 @@ await holdUntilStopped(() => [window.__morph.car.x, window.__morph.car.z]);
 const cb = await E(() => { const c = window.__morph.car, b = window.__cb; return { inside: window.__inside(c.x, 1, c.z), gap: Math.hypot(c.x - b.x, c.z - b.z) - b.w / 2 }; });
 check('Auto prallt an echter Gebäudewand ab', !cb.inside && cb.gap < 8, `Abstand zur Wand ${cb.gap.toFixed(1)} m`);
 
+// drive through photogrammetry clutter (parked car, fence, bump, trees, slab) – must not get stuck
+const lane = await E(async (C) => {
+  const u = window.__utopia, m = window.__morph;
+  const data = await (await fetch(C.osm)).json();
+  const a = u.tw.toLocal(data.testLane.start.lat, data.testLane.start.lon), b = u.tw.toLocal(data.testLane.end.lat, data.testLane.end.lon);
+  const h = Math.atan2(-(b.x - a.x), -(b.z - a.z));
+  Object.assign(m.car, { x: a.x, z: a.z, y: 0, h, v: 0, steer: 0 });
+  window.__lane = { a: [a.x, a.z], b: [b.x, b.z], len: Math.hypot(b.x - a.x, b.z - a.z) };
+  return window.__lane;
+}, C);
+await page.keyboard.down('KeyW');
+const t0 = Date.now();
+let laneRes;
+while (Date.now() - t0 < 120000) {
+  await frames(20);
+  laneRes = await E(() => { const c = window.__morph.car, L = window.__lane; const dx = L.b[0] - L.a[0], dz = L.b[1] - L.a[1]; const t = ((c.x - L.a[0]) * dx + (c.z - L.a[1]) * dz) / (L.len * L.len); const lat = Math.abs((c.x - L.a[0]) * dz - (c.z - L.a[1]) * dx) / L.len; return { t, lat, y: c.y, maxY: Math.max(window.__laneMaxY ?? 0, c.y), v: c.v }; });
+  await E((y) => { window.__laneMaxY = y; }, laneRes.maxY);
+  if (laneRes.t > 0.97) break;
+}
+await page.keyboard.up('KeyW');
+check('Auto fährt durch Straßen-Hindernisse (Parkauto, Bauzaun, Bodenwelle, Bäume)', laneRes.t > 0.97 && laneRes.lat < 2 && laneRes.maxY < 0.5, `${Math.round(laneRes.t * 100)} % der ${lane.len.toFixed(0)} m geschafft, seitlich ${laneRes.lat.toFixed(1)} m, max. Höhe ${laneRes.maxY.toFixed(2)} m`);
+
 // orb -> fly
 await E(() => { const m = window.__morph; const o = m.nearest('orb', m.car.x, m.car.z); const [ex, ez] = window.__axes.ex; Object.assign(m.car, { x: o.x, z: o.z, v: 0 }); });
 await page.waitForFunction(() => window.__morph.mode === 'fly', null, { timeout: 60000 }).catch(() => {});

@@ -46,15 +46,26 @@ function quad(p0, p1, p2, p3, n) {
   for (const p of [p0, p1, p2, p3]) { pos.push(...p); nrm.push(...n); }
   idx.push(o, o + 1, o + 2, o, o + 2, o + 3);
 }
-function box(e, n, w, d, h) {
-  const x0 = e - w / 2, x1 = e + w / 2, z0 = -(n + d / 2), z1 = -(n - d / 2);
-  quad([x0, h, z0], [x0, h, z1], [x1, h, z1], [x1, h, z0], [0, 1, 0]);
-  quad([x0, 0, z1], [x1, 0, z1], [x1, h, z1], [x0, h, z1], [0, 0, 1]);
-  quad([x1, 0, z0], [x0, 0, z0], [x0, h, z0], [x1, h, z0], [0, 0, -1]);
-  quad([x1, 0, z1], [x1, 0, z0], [x1, h, z0], [x1, h, z1], [1, 0, 0]);
-  quad([x0, 0, z0], [x0, 0, z1], [x0, h, z1], [x0, h, z0], [-1, 0, 0]);
+function box(e, n, w, d, h, y0 = 0) {
+  const x0 = e - w / 2, x1 = e + w / 2, z0 = -(n + d / 2), z1 = -(n - d / 2), t = y0 + h;
+  quad([x0, t, z0], [x0, t, z1], [x1, t, z1], [x1, t, z0], [0, 1, 0]);
+  quad([x0, y0, z1], [x1, y0, z1], [x1, t, z1], [x0, t, z1], [0, 0, 1]);
+  quad([x1, y0, z0], [x0, y0, z0], [x0, t, z0], [x1, t, z0], [0, 0, -1]);
+  quad([x1, y0, z1], [x1, y0, z0], [x1, t, z0], [x1, t, z1], [1, 0, 0]);
+  quad([x0, y0, z0], [x0, y0, z1], [x0, t, z1], [x0, t, z0], [-1, 0, 0]);
 }
 for (const b of buildings) box(b.e, b.n, b.w, b.d, b.h);
+// photogrammetry-style clutter on one street (east = 40, lane at +3.5): melted parked car,
+// construction fence, speed bump, tree (trunk + canopy), kerb-high slab
+const clutter = [];
+const LANE = 43.5;
+for (const [kind, n] of [['car', -295], ['fence', -255], ['bump', -235], ['tree', -175], ['slab', -140], ['car', -110], ['tree', -60]]) {
+  if (kind === 'car') { box(LANE, n, 2.0, 4.6, 1.5); clutter.push({ kind, n, h: 1.5 }); }
+  if (kind === 'fence') { box(LANE, n, 7.0, 0.15, 1.9); clutter.push({ kind, n, h: 1.9 }); }
+  if (kind === 'bump') { box(LANE, n, 7.0, 0.9, 0.3); clutter.push({ kind, n, h: 0.3 }); }
+  if (kind === 'slab') { box(LANE, n, 7.0, 6.0, 0.18); clutter.push({ kind, n, h: 0.18 }); }
+  if (kind === 'tree') { box(LANE, n, 0.45, 0.45, 3.2); box(LANE, n, 5.0, 5.0, 4.5, 3.0); clutter.push({ kind, n, h: 7.5 }); }
+}
 const mkPrim = (p, nn, ii, m) => doc.createPrimitive()
   .setAttribute('POSITION', doc.createAccessor().setType('VEC3').setArray(new Float32Array(p)).setBuffer(buf))
   .setAttribute('NORMAL', doc.createAccessor().setType('VEC3').setArray(new Float32Array(nn)).setBuffer(buf))
@@ -99,5 +110,5 @@ for (let k = -HALF; k <= HALF; k += BLOCK) {
   elements.push({ type: 'way', id: id++, tags: { highway: hw, width: '16' }, geometry: [ll(-HALF + 20, k), ll(HALF - 20, k)] });  // east-west street
 }
 for (const [x0, z0, x1, z1] of parks) elements.push({ type: 'way', id: id++, tags: { leisure: 'park' }, geometry: [ll(x0, z0), ll(x1, z0), ll(x1, z1), ll(x0, z1), ll(x0, z0)] });
-fs.writeFileSync(`${OUT}/osm.json`, JSON.stringify({ elements, testBuildings: buildings.map((b) => ({ ...ll(b.e, b.n), w: b.w, d: b.d, h: b.h })) }));
+fs.writeFileSync(`${OUT}/osm.json`, JSON.stringify({ elements, testBuildings: buildings.map((b) => ({ ...ll(b.e, b.n), w: b.w, d: b.d, h: b.h })), testLane: { start: ll(LANE, -330), end: ll(LANE, -20), clutter: clutter.map((c) => ({ ...c, ...ll(LANE, c.n) })) } }));
 console.log(`[test-tiles] ${buildings.length} buildings, ${parks.length} parks, ${elements.length} OSM ways -> ${OUT}`);

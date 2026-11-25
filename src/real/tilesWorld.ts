@@ -11,6 +11,7 @@ import { computeBoundsTree, disposeBoundsTree, acceleratedRaycast } from 'three-
 import { CityDef } from './cities';
 import { patchMaterial } from '../world/shared';
 import { neonFacadeMaterial, wetGroundMaterial } from './neonMaterials';
+import { isIOS, isTouchDevice } from '../core/quality';
 
 (THREE.BufferGeometry.prototype as unknown as { computeBoundsTree: unknown }).computeBoundsTree = computeBoundsTree;
 (THREE.BufferGeometry.prototype as unknown as { disposeBoundsTree: unknown }).disposeBoundsTree = disposeBoundsTree;
@@ -67,6 +68,12 @@ export class TilesWorld {
     tiles.registerPlugin(new TilesFadePlugin());
     tiles.registerPlugin(new ReorientationPlugin({ lat: city.lat * D2R, lon: city.lon * D2R, height: 0 }));
     tiles.errorTarget = this.errorTarget;
+    // memory budget for streamed tiles: when it is full the renderer stops refining, so dense
+    // cities ended up detailed only around the first area in view. Mobile Safari gets less.
+    const GB = 2 ** 30, mobile = isIOS() || isTouchDevice();
+    tiles.lruCache.minBytesSize = (mobile ? 0.35 : 0.6) * GB;
+    tiles.lruCache.maxBytesSize = (mobile ? 0.6 : 1.1) * GB;
+    tiles.lruCache.unloadPercent = 0.1;
     tiles.setCamera(this.camera);
     tiles.setResolutionFromRenderer(this.camera, this.renderer);
     const layer: Layer = { src, tiles, ready: false, error: '', triedFallback: useFallback };
@@ -133,7 +140,9 @@ export class TilesWorld {
     for (const m of this.materials) m.color.copy(m.userData.base ?? new THREE.Color(1, 1, 1)).multiply(c);
   }
 
-  setErrorTarget(e: number) { this.errorTarget = e; for (const l of this.layers) l.tiles.errorTarget = e; }
+  setErrorTarget(e: number) { e *= this.city.detailScale ?? 1; this.errorTarget = e; for (const l of this.layers) l.tiles.errorTarget = e; }
+
+  memoryUse() { const c = this.layers[0]?.tiles.lruCache as unknown as { cachedBytes: number; maxBytesSize: number }; return c ? c.cachedBytes / c.maxBytesSize : 0; }
 
   update() {
     this.camera.updateMatrixWorld();
@@ -197,6 +206,34 @@ export class TilesWorld {
       hit = true;
     }
     return [x, y, z, hit];
+  }
+
+  /**
+   * Car collision for photogrammetry: only blocks at real building walls. A wall must be hit
+   * horizontally at 2.6 m AND at 7 m above the road at about the same distance with a vertical
+   * surface – trees, fences, construction sites, kerbs and "melted" parked cars do not qualify.
+   */
+  wallCollide(x: number, groundY: number, z: number, r: number): [number, number, boolean] {
+    let hit = false;
+    for (const [dx, , dz] of PROBE_DIRS) {
+      if (dx === 0 && dz === 0) continue;
+      const lo = this.cast(x, groundY + 2.6, z, dx, 0, dz, r);
+      if (!lo) continue;
+      const nl = this.normalOf(lo);
+      if (Math.abs(nl.y) > 0.35) continue;
+      const hi = this.cast(x, groundY + 7, z, dx, 0, dz, r + 2.5);
+      if (!hi || Math.abs(hi.distance - lo.distance) > 1.8 || Math.abs(this.normalOf(hi).y) > 0.35) continue;
+      if (nl.x * dx + nl.z * dz > 0) nl.negate();
+      const push = r - lo.distance;
+      x += nl.x * push; z += nl.z * push;
+      hit = true;
+    }
+    return [x, z, hit];
+  }
+
+  /** road height for a car at height y: ignores anything more than ~0.45 m above the wheels (bumps, clutter) */
+  roadAt(x: number, z: number, y: number): number | null {
+    return this.groundAt(x, z, y + 0.45);
   }
 
   sweep(ax: number, ay: number, az: number, bx: number, by: number, bz: number): THREE.Intersection | null {
