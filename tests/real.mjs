@@ -2,11 +2,16 @@
 // (tools/make-test-tiles.mjs) because Google/Cesium/Overpass are not reachable from CI.
 import { chromium } from 'playwright-core';
 const BASE = process.argv[2] || 'http://localhost:4173/';
+const CITY = process.argv[3] || 'frankfurt';
+const C = CITY === 'tokyo'
+  ? { lat: 35.6905, lon: 139.7000, url: '?city=tokyo&tileset=./test-tiles-tokyo/buildings.json&terrain=./test-tiles-tokyo/ground.json&osm=./test-tiles-tokyo/osm.json', osm: './test-tiles-tokyo/osm.json' }
+  : { lat: 50.1109, lon: 8.6721, url: '?city=frankfurt&tileset=./test-tiles/tileset.json&osm=./test-tiles/osm.json', osm: './test-tiles/osm.json' };
+console.log('== Stadt:', CITY);
 const res = []; const check = (n, ok, d = '') => { res.push(ok); console.log(`${ok ? 'PASS' : 'FAIL'}  ${n}${d ? '  — ' + d : ''}`); };
 const browser = await chromium.launch({ executablePath: process.env.CHROME || '/usr/bin/google-chrome', args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
 const page = await browser.newPage({ viewport: { width: 640, height: 360 } });
 const errors = []; page.on('pageerror', (e) => errors.push(e.message)); page.on('console', (m) => { if (m.type() === 'error' && !/404|Failed to load/.test(m.text())) errors.push(m.text()); });
-await page.goto(`${BASE}?city=frankfurt&tileset=./test-tiles/tileset.json&osm=./test-tiles/osm.json&quality=performance&fixedres`);
+await page.goto(`${BASE}${C.url}&quality=performance&fixedres`);
 await page.waitForFunction(() => document.getElementById('loading')?.classList.contains('done') && window.__morph, null, { timeout: 240000 });
 const E = (fn, a) => page.evaluate(fn, a);
 const frames = (n) => E((n) => new Promise((r) => { let i = 0; const f = () => (++i >= n ? r() : requestAnimationFrame(f)); requestAnimationFrame(f); }), n);
@@ -24,17 +29,17 @@ const holdUntilStopped = async (getter, maxMs = 90000) => {
 };
 
 // building footprints of the test city in local coordinates
-await E(async () => {
+await E(async (C) => {
   const u = window.__utopia;
-  const data = await (await fetch('./test-tiles/osm.json')).json();
-  const o = u.tw.toLocal(50.1109, 8.6721), ex = u.tw.toLocal(50.1109, 8.6731).sub(o).normalize(), nx = u.tw.toLocal(50.1119, 8.6721).sub(o).normalize();
+  const data = await (await fetch(C.osm)).json();
+  const o = u.tw.toLocal(C.lat, C.lon), ex = u.tw.toLocal(C.lat, C.lon + 0.001).sub(o).normalize(), nx = u.tw.toLocal(C.lat + 0.001, C.lon).sub(o).normalize();
   window.__bld = data.testBuildings.map((b) => { const c = u.tw.toLocal(b.lat, b.lon); return { x: c.x, z: c.z, w: b.w, d: b.d, h: b.h }; });
   window.__inside = (x, y, z, m = 0) => window.__bld.some((b) => { const dx = x - b.x, dz = z - b.z; const pe = dx * ex.x + dz * ex.z, pn = dx * nx.x + dz * nx.z; return Math.abs(pe) < b.w / 2 + m && Math.abs(pn) < b.d / 2 + m && y < b.h; });
   window.__axes = { ex: [ex.x, ex.z], nx: [nx.x, nx.z] };
-});
+}, C);
 
-const st = await E(() => { const u = window.__utopia, m = window.__morph; return { ready: u.tw.ready, roads: u.osm?.roadsKm, parks: u.osm?.parks, stats: m.stats, y: u.camera.position.y, ground: u.tw.groundAt(u.camera.position.x, u.camera.position.z, 3000), axes: window.__axes, attr: document.getElementById('attr').textContent }; });
-check('3D-Tiles geladen und auf die Stadt eingenordet (Boden ≈ Ellipsoidhöhe 0)', st.ready && Math.abs(st.ground) < 0.5, `Boden ${st.ground?.toFixed(2)} m, Kamera ${st.y.toFixed(0)} m`);
+const st = await E(() => { const u = window.__utopia, m = window.__morph; return { ready: u.tw.ready, roads: u.osm?.roadsKm, parks: u.osm?.parks, stats: m.stats, y: u.camera.position.y, ground: (() => { const c = m.nearest('car', u.camera.position.x, u.camera.position.z); return u.tw.groundAt(c.x, c.z, 3000); })(), axes: window.__axes, attr: document.getElementById('attr').textContent }; });
+check('3D-Tiles geladen und auf die Stadt eingenordet (Straße ≈ Ellipsoidhöhe 0)', st.ready && Math.abs(st.ground) < 0.5, `Straßenhöhe ${st.ground?.toFixed(2)} m, Kamera ${st.y.toFixed(0)} m`);
 check('Osten/Norden sind waagerecht und rechtwinklig (Reorientierung korrekt)', Math.abs(st.axes.ex[0] * st.axes.nx[0] + st.axes.ex[1] * st.axes.nx[1]) < 0.01, JSON.stringify(st.axes));
 check('Straßen & Parks aus OSM übernommen', st.roads > 100 && st.parks >= 4, `${st.roads?.toFixed(0)} km, ${st.parks} Parks`);
 check('Autos, Frösche, Kugeln platziert', st.stats.cars > 30 && st.stats.frogs > 2 && st.stats.orbs > 10, JSON.stringify(st.stats));
@@ -124,8 +129,36 @@ await page.keyboard.down('Space'); await frames(3); await page.keyboard.up('Spac
 await page.waitForFunction(() => window.__morph.frog.grounded && window.__mx > 0.01, null, { timeout: 60000 }).catch(() => {});
 const jh = await E(() => { window.__tr = false; return { h: window.__mx, label: document.getElementById('speedv').textContent }; });
 check('Kleiner Froschsprung bei niedriger Sprungkraft', jh.h > 0.03 && jh.h < 1.0, `${(jh.h * 100).toFixed(0)} cm (${jh.label})`);
+if (CITY === 'tokyo') {
+  const neon = await E(() => {
+    const u = window.__utopia, sc = u.camera.parent;
+    let neonMeshes = 0, other = 0, signs = 0;
+    u.tw.group.traverse((o) => { if (o.isMesh) { const k = o.material.customProgramCacheKey?.(); if (k === 'neon-facade') neonMeshes++; else if (k !== 'wet-ground') other++; } });
+    sc.traverse((o) => { if (o.isInstancedMesh && o.material.customProgramCacheKey?.() === 'neon-signs') signs = o.count; });
+    return { neonMeshes, other, signs, preset: document.querySelector('#seg-preset button.on')?.textContent, layers: u.tw.layerStatus() };
+  });
+  check('Tokio: Gebäude im Neon-Stil, Gelände separat', neon.neonMeshes > 0 && neon.other === 0, JSON.stringify(neon.layers));
+  check('Tokio: Leuchtreklamen an echten Fassaden', neon.signs >= 10, `${neon.signs} Schilder`);
+  check('Tokio: startet bei Nacht', neon.preset === 'Nacht', neon.preset);
+  const signOk = await E(() => {
+    const u = window.__utopia, sc = u.camera.parent;
+    let mesh; sc.traverse((o) => { if (o.isInstancedMesh && o.material.customProgramCacheKey?.() === 'neon-signs') mesh = o; });
+    const m = new u.THREE.Matrix4(), p = new u.THREE.Vector3();
+    let inside = 0, floating = 0;
+    for (let i = 0; i < mesh.count; i++) {
+      mesh.getMatrixAt(i, m); p.setFromMatrixPosition(m);
+      if (window.__inside(p.x, p.y, p.z, -0.5)) inside++;
+      // a sign must be close to a facade (within its own half size + 1 m)
+      const s = new u.THREE.Vector3().setFromMatrixScale(m);
+      const near = window.__bld.some((b) => window.__inside.call(null, p.x, Math.min(p.y, b.h - 0.1), p.z, Math.max(s.x, s.y) / 2 + 1.5));
+      if (!near) floating++;
+    }
+    return { n: mesh.count, inside, floating };
+  });
+  check('Tokio: Schilder hängen an Wänden (nicht im Gebäude, nicht frei schwebend)', signOk.inside === 0 && signOk.floating === 0, JSON.stringify(signOk));
+}
 check('Keine Laufzeitfehler', errors.length === 0, errors.slice(0, 3).join(' | '));
-await page.screenshot({ path: '/tmp/real-test.png' });
+await page.screenshot({ path: `/tmp/real-test-${CITY}.png` });
 await browser.close();
 console.log(`\n${res.filter(Boolean).length}/${res.length} bestanden`);
 process.exit(res.every(Boolean) ? 0 : 1);

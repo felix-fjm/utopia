@@ -19,7 +19,8 @@ import { Challenge } from './game/challenge';
 import { proceduralWorld } from './game/cityWorld';
 import { Morph, MorphMode, MorphWorld, MorphConfig, carMaxFromSlider, jumpHeight } from './game/morph';
 import { cityFromEnv } from './real/cities';
-import { TilesWorld } from './real/tilesWorld';
+import { TilesWorld, TileSource, TilesAuth } from './real/tilesWorld';
+import { NeonSigns } from './real/neonSigns';
 import { storedAuth, askAuth, forgetAuth } from './real/auth';
 import { fetchOsm, OsmIndex } from './real/osm';
 import { CellContent } from './game/creatures';
@@ -32,7 +33,7 @@ let seed = parseInt(params.get('seed') ?? '', 10);
 if (!Number.isFinite(seed)) seed = 1337;
 let qualityName: QualityName = autoQuality();
 let Q: QualitySettings = QUALITY[qualityName];
-let preset: PresetName = (params.get('preset') as PresetName) || 'golden';
+let preset: PresetName = (params.get('preset') as PresetName) || (cityFromEnv(params.get('city'))?.preset as PresetName | undefined) || 'golden';
 const CHALLENGE = import.meta.env.VITE_GAME === 'challenge' || params.get('mode') === 'challenge';
 let challenge: Challenge | null = null;
 if (CHALLENGE) document.title = 'UTOPIA Challenge – 30 Tore';
@@ -42,6 +43,7 @@ const MORPH = !CHALLENGE && (!!REAL || import.meta.env.VITE_GAME === 'morph' || 
 let morph: Morph | null = null;
 if (MORPH) document.title = REAL ? `UTOPIA Verwandlung – ${REAL.name}` : 'UTOPIA Verwandlung – Auto & Frosch';
 let tw: TilesWorld | null = null;
+let signs: NeonSigns | null = null;
 let osm: OsmIndex | null = null;
 let osmFailed = false;
 /** realistic sizes in the real cities: car 4.6 m (model size), frog ≈ 13 cm */
@@ -306,6 +308,11 @@ function frame(now: number) {
       const pz = morph.mode === 'car' ? morph.car.z : morph.mode === 'frog' ? morph.frog.z : wz;
       morph.refreshGround(px, pz, 350);
     }
+    if (signs) {
+      const px = morph?.mode === 'car' ? morph.car.x : morph?.mode === 'frog' ? morph.frog.x : wx;
+      const pz = morph?.mode === 'car' ? morph.car.z : morph?.mode === 'frog' ? morph.frog.z : wz;
+      signs.update(px, pz);
+    }
     if (now - attrT > 2000 && tw) { attrT = now; ui.els.attr.textContent = [tw.attributions(), '© OpenStreetMap-Mitwirkende'].filter(Boolean).join(' · '); }
   } else {
     city.stream(wx, wz, fwd.x, fwd.z);
@@ -341,7 +348,9 @@ function frame(now: number) {
       (mem ? `JS-Heap    ${(mem.usedJSHeapSize / 1048576).toFixed(0)} MB\n` : '') +
       `Qualität   ${qualityName}\nWelt       ${wx.toFixed(0)}, ${wz.toFixed(0)}\nAssets     ${REAL ? 'Google 3D · ' + REAL.name : reg.kitLabel}` +
       (morph ? `\nObjekte    ${morph.stats.cars} Autos / ${morph.stats.frogs} Frösche / ${morph.stats.orbs} Kugeln` : '') +
-      (osm ? `\nOSM        ${osm.roadsKm.toFixed(0)} km Straßen, ${osm.parks} Parks` : '');
+      (osm ? `\nOSM        ${osm.roadsKm.toFixed(0)} km Straßen, ${osm.parks} Parks` : '') +
+      (signs ? `\nNeon       ${signs.count} Schilder` : '') +
+      (tw ? '\nKacheln    ' + tw.layerStatus().map((l) => `${l.label}${l.ready ? '✓' : l.error ? '✗' : '…'}${l.fallback ? '(alt)' : ''}`).join(' ') : '');
   }
   requestAnimationFrame(frame);
 }
@@ -431,13 +440,14 @@ async function boot() {
 
 async function bootReal() {
   const city0 = REAL!;
-  ui.setBadge(`Google Photorealistic 3D · ${city0.name}`, true);
+  const plateau = city0.kind === 'plateau';
+  ui.setBadge(plateau ? `PLATEAU 3D · ${city0.name}` : `Google Photorealistic 3D · ${city0.name}`, true);
   document.getElementById('b-city')!.style.display = 'none';
   // city switcher in the settings
   const row = document.createElement('div');
   row.className = 'seg';
-  row.style.cssText = 'grid-template-columns:repeat(3,1fr);margin-top:8px';
-  row.innerHTML = (['frankfurt', 'sydney', 'hongkong'] as const).map((c) => `<button data-c="${c}" class="${c === city0.id ? 'on' : ''}">${{ frankfurt: 'Frankfurt', sydney: 'Sydney', hongkong: 'Hongkong' }[c]}</button>`).join('');
+  row.style.cssText = 'grid-template-columns:repeat(2,1fr);margin-top:8px';
+  row.innerHTML = (['tokyo', 'frankfurt', 'sydney', 'hongkong'] as const).map((c) => `<button data-c="${c}" class="${c === city0.id ? 'on' : ''}">${{ tokyo: 'Neo Tokio', frankfurt: 'Frankfurt', sydney: 'Sydney', hongkong: 'Hongkong' }[c]}</button>`).join('');
   document.getElementById('b-reset')!.parentElement!.after(row);
   row.querySelectorAll<HTMLElement>('button').forEach((b) => b.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); const u = new URL(location.href); u.searchParams.set('city', b.dataset.c!); location.href = u.toString(); }));
   const keyBtn = document.createElement('button');
@@ -450,15 +460,31 @@ async function bootReal() {
   attr.style.cssText = 'position:absolute;left:calc(var(--sal) + 14px);bottom:calc(var(--sab) + 4px);font:500 9px -apple-system,sans-serif;color:rgba(255,255,255,.75);text-shadow:0 1px 2px #000;pointer-events:none;max-width:60vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
   ui.root.appendChild(attr);
   ui.els.attr = attr;
-  ui.els.assetnote.textContent = 'Fotorealistische 3D-Kacheln: Google Maps Platform (über Cesium ion oder Google). Straßen & Parks: © OpenStreetMap-Mitwirkende (ODbL). Auto in Originalgröße (4,6 m), Frosch ≈ 13 cm.';
+  ui.els.assetnote.textContent = plateau
+    ? 'Gebäude: 3D都市モデル（国土交通省 PLATEAU）を加工して作成 – im eigenen Neon-Stil eingefärbt. Gelände: PLATEAU-Terrain/Cesium. Straßen & Parks: © OpenStreetMap-Mitwirkende (ODbL). Auto 4,9 m, Frosch ≈ 14 cm, Linksverkehr.'
+    : 'Fotorealistische 3D-Kacheln: Google Maps Platform (über Cesium ion oder Google). Straßen & Parks: © OpenStreetMap-Mitwirkende (ODbL). Auto in Originalgröße (4,9 m), Frosch ≈ 14 cm.';
 
-  let auth = storedAuth(params);
+  // test hooks: ?tileset= (buildings / google stand-in) and ?terrain= (PLATEAU ground stand-in)
+  const testTiles = params.get('tileset'), testTerrain = params.get('terrain');
+  const sourcesFor = (auth: TilesAuth | null): TileSource[] => {
+    if (!plateau) return [testTiles ? { kind: 'url', key: testTiles, style: 'photo', primary: true, label: 'Test' } : { kind: auth!.kind, key: auth!.key, style: 'photo', primary: true, label: 'Google 3D' }];
+    const ground: TileSource = testTerrain ? { kind: 'url', key: testTerrain, style: 'ground', primary: true, label: 'Gelände' }
+      : { kind: 'ion', key: auth!.key, assetId: '2488101', fallback: '1', style: 'ground', primary: true, label: 'Gelände' };
+    const blds: TileSource[] = testTiles ? [{ kind: 'url', key: testTiles, style: 'neon', label: 'Gebäude' }]
+      : (city0.wards ?? []).map((w) => ({ kind: 'url' as const, style: 'neon' as const, label: w,
+        key: `https://api.plateauview.mlit.go.jp/datacatalog/3dtiles/${w}-bldg-lod2-latest/tileset.json`,
+        fallback: `https://api.plateauview.mlit.go.jp/datacatalog/3dtiles/${w}-bldg-lod1-latest/tileset.json` }));
+    return [ground, ...blds];
+  };
+  const needsAuth = !(plateau ? testTerrain : testTiles);
+  let auth = needsAuth ? storedAuth(params) : null;
+  if (auth && plateau && auth.kind !== 'ion') auth = null; // PLATEAU terrain needs a Cesium ion token
   let lastErr = '';
   for (;;) {
-    if (!auth) { ui.loaded(); auth = await askAuth(city0.name, lastErr); document.getElementById('loading')!.classList.remove('done'); }
+    if (needsAuth && !auth) { ui.loaded(); auth = await askAuth(city0.name, lastErr, plateau); document.getElementById('loading')!.classList.remove('done'); }
     ui.loading(0.1, 'Verbinde mit 3D-Kacheln');
-    tw = new TilesWorld(renderer, camera, city0, auth);
-    scene.add(tw.tiles.group);
+    tw = new TilesWorld(renderer, camera, city0, sourcesFor(auth));
+    scene.add(tw.group);
     applyQuality(qualityName);
     // warm up: stream until the root tileset is there
     const t0 = performance.now();
@@ -468,14 +494,19 @@ async function bootReal() {
     }
     if (tw.ready) break;
     lastErr = tw.error ? `Fehler: ${tw.error}` : 'Keine Antwort vom Kachel-Server.';
-    if (/403/.test(lastErr) && auth.kind === 'google') lastErr += ' – Google sperrt die 3D-Kacheln für EU-Konten. Bitte Cesium ion probieren.';
-    scene.remove(tw.tiles.group); tw.dispose(); tw = null;
+    if (/403/.test(lastErr) && auth?.kind === 'google') lastErr += ' – Google sperrt die 3D-Kacheln für EU-Konten. Bitte Cesium ion probieren.';
+    if (/40[13]/.test(lastErr) && auth?.kind === 'ion') lastErr += ' – Bitte prüfen: Token korrekt kopiert? Asset im Cesium „Asset Depot“ zu „My Assets“ hinzugefügt?';
+    tw.dispose(); tw = null;
+    if (!needsAuth) { ui.loading(0, lastErr); return; }
     forgetAuth(); auth = null;
   }
   applyPreset(preset);
   // street data in parallel
   const osmP = fetchOsm(city0.lat, city0.lon, 3000, params.get('osm') ?? undefined)
-    .then((ways) => { osm = new OsmIndex(ways, (la, lo) => { const v = tw!.toLocal(la, lo); return [v.x, v.z]; }, seed, city0.leftHandTraffic); })
+    .then((ways) => {
+      osm = new OsmIndex(ways, (la, lo) => { const v = tw!.toLocal(la, lo); return [v.x, v.z]; }, seed, city0.leftHandTraffic);
+      if (plateau) { signs = new NeonSigns(tw!, () => osm, seed); scene.add(signs.mesh); }
+    })
     .catch((e) => { console.warn('OSM failed', e); osmFailed = true; });
   // wait for the ground under the start point
   const a = tw!.toLocal(city0.start[0], city0.start[1]);

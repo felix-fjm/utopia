@@ -99,6 +99,25 @@ export class OsmIndex {
     return false;
   }
 
+  /** sample points on the streets of a cell (for neon signs): position, direction, half width */
+  roadSamples(cx: number, cz: number, n: number): { x: number; z: number; dx: number; dz: number; half: number }[] {
+    const segs = (this.segCells.get(cx + ',' + cz) ?? []).filter((s) => s.kind !== 'motorway' && s.kind !== 'service');
+    if (!segs.length) return [];
+    const rng = new Rng(Math.floor(hash2(cx, cz, this.seed + 515) * 4294967296));
+    const total = segs.reduce((a, s) => a + s.len, 0);
+    const out: { x: number; z: number; dx: number; dz: number; half: number }[] = [];
+    const x0 = cx * CELL, z0 = cz * CELL;
+    for (let i = 0; i < n * 3 && out.length < n; i++) {
+      let r = rng.next() * total, seg = segs[0];
+      for (const s of segs) { if ((r -= s.len) <= 0) { seg = s; break; } }
+      const t = rng.next();
+      const x = seg.ax + (seg.bx - seg.ax) * t, z = seg.az + (seg.bz - seg.az) * t;
+      if (x < x0 || x >= x0 + CELL || z < z0 || z >= z0 + CELL) continue;
+      out.push({ x, z, dx: (seg.bx - seg.ax) / seg.len, dz: (seg.bz - seg.az) / seg.len, half: seg.half });
+    }
+    return out;
+  }
+
   /** deterministic content of one streaming cell */
   cell(cx: number, cz: number): CellContent {
     const rng = new Rng(Math.floor(hash2(cx, cz, this.seed + 4242) * 4294967296));

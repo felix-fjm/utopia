@@ -23,7 +23,9 @@
     "build:hongkong": "VITE_CITY=hongkong vite build --outDir dist-hongkong",
     "dev:neocity": "VITE_GAME=morph vite --host",
     "build:neocity": "VITE_GAME=morph vite build --outDir dist-neocity",
-    "test:real": "node tools/make-test-tiles.mjs && node tests/real.mjs"
+    "test:real": "node tools/make-test-tiles.mjs && node tools/make-test-tiles.mjs --out public/test-tiles-tokyo --lat 35.6905 --lon 139.7000 --split && node tests/real.mjs http://localhost:4173/ frankfurt && node tests/real.mjs http://localhost:4173/ tokyo",
+    "dev:tokyo": "VITE_CITY=tokyo vite --host",
+    "build:tokyo": "VITE_CITY=tokyo vite build --outDir dist-tokyo"
   },
   "dependencies": {
     "3d-tiles-renderer": "^0.5.4",

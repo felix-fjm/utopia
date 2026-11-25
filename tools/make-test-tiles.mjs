@@ -5,8 +5,10 @@ import { Document, NodeIO } from '@gltf-transform/core';
 import { KHRMaterialsUnlit } from '@gltf-transform/extensions';
 import fs from 'node:fs';
 
-const OUT = process.argv[2] || 'public/test-tiles';
-const LAT0 = 50.1109, LON0 = 8.6721;            // = CITIES.frankfurt origin
+const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : d; };
+const OUT = arg('--out', process.argv[2] && !process.argv[2].startsWith('--') ? process.argv[2] : 'public/test-tiles');
+const LAT0 = parseFloat(arg('--lat', '50.1109')), LON0 = parseFloat(arg('--lon', '8.6721'));   // default = CITIES.frankfurt origin
+const SPLIT = process.argv.includes('--split');   // PLATEAU-like: separate buildings + ground tilesets, lit material
 const a = 6378137, f = 1 / 298.257223563, e2 = f * (2 - f);
 const D2R = Math.PI / 180;
 const phi = LAT0 * D2R, lam = LON0 * D2R;
@@ -37,7 +39,7 @@ for (let bx = -HALF; bx < HALF; bx += BLOCK) for (let bz = -HALF; bz < HALF; bz 
 const doc = new Document();
 const unlit = doc.createExtension(KHRMaterialsUnlit);
 const buf = doc.createBuffer();
-const mat = (rgb) => doc.createMaterial().setBaseColorFactor([...rgb, 1]).setExtension('KHR_materials_unlit', unlit.createUnlit());
+const mat = (rgb) => SPLIT ? doc.createMaterial().setBaseColorFactor([...rgb, 1]) : doc.createMaterial().setBaseColorFactor([...rgb, 1]).setExtension('KHR_materials_unlit', unlit.createUnlit());
 const pos = [], nrm = [], idx = [];
 function quad(p0, p1, p2, p3, n) {
   const o = pos.length / 3;
@@ -64,15 +66,28 @@ const S = 28, step = (2 * HALF) / S;
 for (let j = 0; j <= S; j++) for (let i = 0; i <= S; i++) { gp.push(-HALF + i * step, 0, -HALF + j * step); gn.push(0, 1, 0); }
 for (let j = 0; j < S; j++) for (let i = 0; i < S; i++) { const o = j * (S + 1) + i; gi.push(o, o + S + 1, o + 1, o + 1, o + S + 1, o + S + 2); }
 const gPrim = mkPrim(gp, gn, gi, mat([0.25, 0.26, 0.28]));
-const mesh = doc.createMesh('city').addPrimitive(bPrim).addPrimitive(gPrim);
-doc.createScene().addChild(doc.createNode('city').setMesh(mesh));
 fs.mkdirSync(OUT, { recursive: true });
-await new NodeIO().registerExtensions([KHRMaterialsUnlit]).write(`${OUT}/city.glb`, doc);
-
-fs.writeFileSync(`${OUT}/tileset.json`, JSON.stringify({
-  asset: { version: '1.1' }, geometricError: 2000,
-  root: { transform, boundingVolume: { box: [0, 0, 150, HALF, 0, 0, 0, HALF, 0, 0, 0, 160] }, geometricError: 0, refine: 'REPLACE', content: { uri: 'city.glb' } },
-}));
+const io = new NodeIO().registerExtensions([KHRMaterialsUnlit]);
+const tileset = (uri) => JSON.stringify({ asset: { version: '1.0' }, geometricError: 2000,
+  root: { transform, boundingVolume: { box: [0, 0, 150, HALF, 0, 0, 0, HALF, 0, 0, 0, 160] }, geometricError: 0, refine: 'REPLACE', content: { uri } } });
+if (SPLIT) {
+  doc.createScene().addChild(doc.createNode('buildings').setMesh(doc.createMesh('b').addPrimitive(bPrim)));
+  await io.write(`${OUT}/buildings.glb`, doc);
+  // ground as its own document
+  const gdoc = new Document(); const gbuf = gdoc.createBuffer();
+  const gm = gdoc.createMaterial().setBaseColorFactor([0.3, 0.3, 0.3, 1]);
+  const acc = (t, a) => gdoc.createAccessor().setType(t).setArray(a).setBuffer(gbuf);
+  const gpr = gdoc.createPrimitive().setAttribute('POSITION', acc('VEC3', new Float32Array(gp))).setAttribute('NORMAL', acc('VEC3', new Float32Array(gn))).setIndices(acc('SCALAR', new Uint32Array(gi))).setMaterial(gm);
+  gdoc.createScene().addChild(gdoc.createNode('ground').setMesh(gdoc.createMesh('g').addPrimitive(gpr)));
+  await io.write(`${OUT}/ground.glb`, gdoc);
+  fs.writeFileSync(`${OUT}/buildings.json`, tileset('buildings.glb'));
+  fs.writeFileSync(`${OUT}/ground.json`, tileset('ground.glb'));
+} else {
+  const mesh = doc.createMesh('city').addPrimitive(bPrim).addPrimitive(gPrim);
+  doc.createScene().addChild(doc.createNode('city').setMesh(mesh));
+  await io.write(`${OUT}/city.glb`, doc);
+  fs.writeFileSync(`${OUT}/tileset.json`, tileset('city.glb'));
+}
 
 // ---- OSM (Overpass JSON)
 const elements = [];

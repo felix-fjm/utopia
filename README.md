@@ -50,11 +50,12 @@ URL-Parameter: `?quality=performance|balanced|high|ultra`, `?preset=golden|day|b
 - Als Auto oder Frosch erscheinen **leuchtende, halbtransparente Kugeln** am Boden (mit Lichtsäule und Kompass-Marker). Hinein fahren oder springen → zurück im Flugmodus; Auto bzw. Frosch bleibt dort zurück und kann wieder übernommen werden.
 - Test: `node tests/morph.mjs` (18 Prüfungen: Platzierung, Einsteigen, Fahren, Lenken, Bremsen, Gebäudekollision, Kugel-Rückkehr, Sprungstärke, Hüpfen, Dachlandung, Streaming-Grenzen).
 
-## Vier Verwandlungs-Versionen: Neo City, Frankfurt, Sydney, Hongkong
+## Verwandlungs-Versionen: Neo Tokio, Frankfurt, Sydney, Hongkong, Neo City
 
 | Version | Starten (lokal, im WLAN aufs iPhone) | Build (statisch hostbar) |
 |---|---|---|
-| Neo City (KitBash3D) | `npm run dev:neocity` | `npm run build:neocity` |
+| Neo Tokio (PLATEAU) | `npm run dev:tokyo` | `npm run build:tokyo` |
+| Neo City (KitBash3D, nur lokal) | `npm run dev:neocity` | `npm run build:neocity` |
 | Google Frankfurt | `npm run dev:frankfurt` | `npm run build:frankfurt` |
 | Google Sydney | `npm run dev:sydney` | `npm run build:sydney` |
 | Google Hongkong | `npm run dev:hongkong` | `npm run build:hongkong` |
@@ -70,7 +71,10 @@ Alternativ jede URL mit `?city=frankfurt|sydney|hongkong`. In der App lässt sic
 - **Quellenangaben** (Google-Datenquellen, © OpenStreetMap-Mitwirkende) werden unten links eingeblendet – bitte nicht entfernen.
 - **Test ohne Internetzugang:** `npm run test:real` erzeugt eine synthetische, in Frankfurt verortete 3D-Tiles-Stadt im selben Format samt OSM-Daten und prüft Einnordung, Platzierung, Größen, Kollision, Dachlandung und Moduswechsel.
 
-### Neo City
+### Neo Tokio (PLATEAU) – der Neo-City-Ersatz
+`npm run dev:tokyo` oder `?city=tokyo`. Echte Gebäude von Shinjuku, Shibuya, Minato, Chiyoda und Chūō aus Japans offenem 3D-Stadtmodell **PLATEAU** (Ministerium MLIT, Streaming über die PLATEAU-Datenkatalog-API, LOD2 mit LOD1 als Rückfall), Gelände über Cesium ion (PLATEAU-Terrain, Rückfall Cesium World Terrain). Statt Fototexturen ein eigener Neon-Stil: Fensterraster in Weltkoordinaten (nachts beleuchtete Büros, tagsüber Glas), Neonbänder und -kanten, Dachbaken, nasser Asphalt mit Pfützen und generierte Leuchtreklamen (allgemeine japanische Ladenwörter, keine Marken), die per Raycast von echten OSM-Straßen an echte Fassaden gehängt werden. Linksverkehr, Start bei Nacht. Benötigt einen Cesium-ion-Token (für das Gelände). Quellenhinweis: „3D都市モデル（国土交通省）を加工して作成“.
+
+### Neo City (KitBash3D, nur lokal)
 1. Gratis-Kit auf kitbash3d.com laden (Konto → Kit in den Warenkorb → Checkout; **nicht** über Cargo, die Cargo-Gratisassets sind nur privat lizenziert).
 2. Export + Optimierung wie oben unter „Utopia-Assets einbinden“, nur mit Kit-Namen:
    `blender --background --factory-startup --python tools/blender/export_utopia.py -- --src <Neo-City-Datei> --out assets-private/export --kit "KitBash3D Neo City"` und danach `npm run assets:optimize`.

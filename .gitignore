@@ -13,4 +13,5 @@ dist-sydney
 dist-hongkong
 dist-neocity
 .env.local
-_site/
+public/test-tiles-tokyo/
+dist-tokyo

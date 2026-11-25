@@ -17,7 +17,7 @@ export function storedAuth(params: URLSearchParams): TilesAuth | null {
 export function forgetAuth() { try { localStorage.removeItem(KEY); } catch { /* */ } }
 
 /** small in-page dialog; the key never leaves this browser except toward Cesium/Google */
-export function askAuth(cityName: string, error = ''): Promise<TilesAuth> {
+export function askAuth(cityName: string, error = '', ionOnly = false): Promise<TilesAuth> {
   return new Promise((resolve) => {
     const el = document.createElement('div');
     el.className = 'goverlay show';
@@ -28,9 +28,9 @@ export function askAuth(cityName: string, error = ''): Promise<TilesAuth> {
     </style>
     <div class="gcard" style="background:rgba(10,14,22,.94);border:1px solid rgba(255,255,255,.16)">
       <div class="gtitle" style="letter-spacing:.12em">${cityName} <b>in 3D</b></div>
-      <p>Für die fotorealistischen Google-3D-Städte brauchst du einen Zugang. Er wird nur in diesem Browser gespeichert.</p>
+      <p>${ionOnly ? 'Für das Gelände von Neo Tokio brauchst du einen kostenlosen Cesium-ion-Token (die Gebäude kommen frei von PLATEAU).' : 'Für die fotorealistischen Google-3D-Städte brauchst du einen Zugang.'} Er wird nur in diesem Browser gespeichert.</p>
       ${error ? `<p style="color:#ff9a8a">${error}</p>` : ''}
-      <div class="seg authseg" style="grid-template-columns:1fr 1fr;margin-bottom:10px">
+      <div class="seg authseg" style="grid-template-columns:1fr 1fr;margin-bottom:10px;${ionOnly ? 'display:none' : ''}">
         <button data-k="ion" class="on">Cesium ion Token</button><button data-k="google">Google API-Schlüssel</button>
       </div>
       <input id="authkey" type="text" autocomplete="off" spellcheck="false" placeholder="Token / Schlüssel einfügen"
